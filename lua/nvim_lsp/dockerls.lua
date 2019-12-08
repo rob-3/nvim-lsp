@@ -2,20 +2,20 @@ local skeleton = require 'nvim_lsp/skeleton'
 local util = require 'nvim_lsp/util'
 local lsp = vim.lsp
 
-local server_name = "bashls"
-local bin_name = "bash-language-server"
+local server_name = "dockerls"
+local bin_name = "docker-language-server"
 
 local installer = util.npm_installer {
   server_name = server_name;
-  packages = { "bash-language-server" };
+  packages = { "docker-language-server-nodejs" };
   binaries = {bin_name};
 }
 
 skeleton[server_name] = {
   default_config = {
-    cmd = {"bash-language-server", "start"};
-    filetypes = {"sh"};
-    root_dir = vim.loop.os_homedir;
+    cmd = {bin_name, "--stdio"};
+    filetypes = {"Dockerfile", "dockerfile"};
+    root_dir = util.root_pattern("Dockerfile");
     log_level = lsp.protocol.MessageType.Warning;
     settings = {};
   };
@@ -30,15 +30,17 @@ skeleton[server_name] = {
       end
     end
   end;
-  -- on_attach = function(client, bufnr) end;
   docs = {
     description = [[
-https://github.com/mads-hartmann/bash-language-server
+https://github.com/rcjsuen/dockerfile-language-server-nodejs
 
-Language server for bash, written using tree sitter in typescript.
-]];
+`dockerfile-language-server` can be installed via `:LspInstall tsserver` or by yourself with `npm`: 
+```sh
+npm install -g docker-language-server-nodejs
+```
+    ]];
     default_config = {
-      root_dir = "vim's starting directory";
+      root_dir = [[root_pattern("Dockerfile")]];
     };
   };
 };
@@ -46,3 +48,4 @@ Language server for bash, written using tree sitter in typescript.
 skeleton[server_name].install = installer.install
 skeleton[server_name].install_info = installer.info
 -- vim:et ts=2 sw=2
+

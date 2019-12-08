@@ -2,27 +2,26 @@ local skeleton = require 'nvim_lsp/skeleton'
 local util = require 'nvim_lsp/util'
 local lsp = vim.lsp
 
-skeleton.pyls = {
+skeleton.leanls = {
   default_config = {
-    cmd = {"pyls"};
-    filetypes = {"python"};
-    root_dir = vim.loop.os_homedir;
+    cmd = {"lean-language-server", "--stdio"};
+    filetypes = {"lean"};
+    root_dir = util.root_pattern(".git");
     log_level = lsp.protocol.MessageType.Warning;
     settings = {};
   };
   -- on_new_config = function(new_config) end;
   -- on_attach = function(client, bufnr) end;
   docs = {
-    package_json = "https://github.com/palantir/python-language-server/raw/develop/vscode-client/package.json";
+    vscode = "jroesch.lean";
     description = [[
-https://github.com/palantir/python-language-server
+https://github.com/leanprover/lean-client-js/tree/master/lean-language-server
 
-`python-language-server`, a language server for Python.
+Lean language server.
     ]];
     default_config = {
-      root_dir = "vim's starting directory";
+      root_dir = [[util.root_pattern(".git")]];
     };
   };
-};
-
+}
 -- vim:et ts=2 sw=2

@@ -1,3 +1,4 @@
+local vim = vim
 local validate = vim.validate
 local api = vim.api
 local lsp = vim.lsp
@@ -67,6 +68,9 @@ end
 function M.lookup_section(settings, section)
   for part in vim.gsplit(section, '.', true) do
     settings = settings[part]
+    if not settings then
+      return
+    end
   end
   return settings
 end
@@ -114,13 +118,13 @@ M.path = (function()
     return exists(filename) == 'file'
   end
 
-  local is_windows = uv.os_uname().sysname == "Windows"
+  local is_windows = uv.os_uname().version:match("Windows")
   local path_sep = is_windows and "\\" or "/"
 
   local is_fs_root
   if is_windows then
     is_fs_root = function(path)
-      return path:match("^%a:\\\\$")
+      return path:match("^%a:$")
     end
   else
     is_fs_root = function(path)
@@ -143,7 +147,10 @@ M.path = (function()
   end
 
   local function path_join(...)
-    return table.concat(vim.tbl_flatten {...}, path_sep)
+    local result =
+      table.concat(
+        vim.tbl_flatten {...}, path_sep):gsub(path_sep.."+", path_sep)
+    return result
   end
 
   -- Traverse the path calling cb along the way.
@@ -336,7 +343,7 @@ function M.npm_installer(config)
     }
     local cmd = io.popen("sh", "w")
     local install_script = ([[
-    set -eo pipefail
+    set -e
     mkdir -p "{{install_dir}}"
     cd "{{install_dir}}"
     npm install {{packages}}
@@ -345,7 +352,7 @@ function M.npm_installer(config)
     cmd:write(install_script)
     cmd:close()
     if not get_install_info().is_installed then
-      api.nvim_err_writeln('Installation of', config.server_name, 'failed')
+      api.nvim_err_writeln('Installation of ' .. config.server_name .. ' failed')
     end
   end
 
@@ -354,6 +361,66 @@ function M.npm_installer(config)
     info = get_install_info;
   }
 end
+
+function M.sh(script, cwd)
+  api.nvim_command("10new")
+  assert(cwd and M.path.is_dir(cwd), "sh: Invalid directory")
+  local winnr = api.nvim_get_current_win()
+  local bufnr = api.nvim_get_current_buf()
+  local stdin = uv.new_pipe(false)
+  local stdout = uv.new_pipe(false)
+  local stderr = uv.new_pipe(false)
+  local handle, pid
+  handle, pid = uv.spawn("sh", {
+    stdio = {stdin, stdout, stderr};
+    cwd = cwd;
+  }, function()
+    stdin:close()
+    stdout:close()
+    stderr:close()
+    handle:close()
+    vim.schedule(function()
+      api.nvim_command("silent bwipeout! "..bufnr)
+    end)
+  end)
+
+  -- If the buffer closes, then kill our process.
+  api.nvim_buf_attach(bufnr, false, {
+    on_detach = function()
+      if not handle:is_closing() then
+        handle:kill(15)
+      end
+    end;
+  })
+
+  local output_buf = ''
+  local function update_chunk(err, chunk)
+    if chunk then
+      output_buf = output_buf..chunk
+      local lines = vim.split(output_buf, '\n', true)
+      api.nvim_buf_set_option(bufnr, "modifiable", true)
+      api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+      api.nvim_buf_set_option(bufnr, "modifiable", false)
+      api.nvim_buf_set_option(bufnr, "modified", false)
+      if api.nvim_win_is_valid(winnr) then
+        api.nvim_win_set_cursor(winnr, {#lines, 0})
+      end
+    end
+  end
+  update_chunk = vim.schedule_wrap(update_chunk)
+  stdout:read_start(update_chunk)
+  stderr:read_start(update_chunk)
+  stdin:write(script)
+  stdin:write("\n")
+  stdin:shutdown()
+end
+
+function M.format_vspackage_url(extension_name)
+  local org, package = unpack(vim.split(extension_name, ".", true))
+  assert(org and package)
+  return string.format("https://marketplace.visualstudio.com/_apis/public/gallery/publishers/%s/vsextensions/%s/latest/vspackage", org, package)
+end
+
 
 function M.utf8_config(config)
   config.capabilities = config.capabilities or lsp.protocol.make_client_capabilities()
@@ -364,11 +431,6 @@ function M.utf8_config(config)
     end
   end
   return config
-end
-
--- Returns a function which returns the same value forever.
-function M.once(value)
-  return function() return value end
 end
 
 return M

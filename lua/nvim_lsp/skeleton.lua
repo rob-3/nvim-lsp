@@ -39,7 +39,9 @@ function skeleton.__newindex(t, template_name, template)
   local function add_callbacks(config)
     config.callbacks["window/logMessage"] = function(err, method, params, client_id)
       if params and params.type <= config.log_level then
-        lsp.builtin_callbacks[method](err, method, params, client_id)
+        -- TODO(ashkan) remove this after things have settled.
+        assert(lsp.callbacks, "Please update neovim master. This is an incompatible interface.")
+        lsp.callbacks[method](err, method, params, client_id)
       end
     end
 
@@ -111,6 +113,21 @@ function skeleton.__newindex(t, template_name, template)
         pcall(config.on_new_config, new_config)
       end
 
+      new_config.on_init = util.add_hook_after(new_config.on_init, function(client, _result)
+        function client.workspace_did_change_configuration(settings)
+          if not settings then return end
+          if vim.tbl_isempty(settings) then
+            settings = {[vim.type_idx]=vim.types.dictionary}
+          end
+          return client.notify('workspace/didChangeConfiguration', {
+            settings = settings;
+          })
+        end
+        if new_config.settings then
+          client.workspace_did_change_configuration(new_config.settings)
+        end
+      end)
+
       -- Save the old _on_attach so that we can reference it via the BufEnter.
       new_config._on_attach = new_config.on_attach
       new_config.on_attach = vim.schedule_wrap(function(client, bufnr)
@@ -119,8 +136,8 @@ function skeleton.__newindex(t, template_name, template)
         else
           api.nvim_command(string.format(
               "autocmd BufEnter <buffer=%d> ++once lua require'nvim_lsp'[%q]._setup_buffer(%d)"
-              , template_name
               , bufnr
+              , template_name
               , client.id
               ))
         end
